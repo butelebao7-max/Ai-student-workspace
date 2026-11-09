@@ -55,17 +55,30 @@
 
       <section class="body">
         <form id="task-form" class="composer" autocomplete="off">
-          <label class="sr-only" for="task-input">新的学习任务</label>
-          <input
-            id="task-input"
-            type="text"
-            maxlength="100"
-            placeholder="例如：背诵《静夜思》"
-            enterkeyhint="done"
-          >
-          <button type="submit" id="add-button">添加</button>
+          <div class="subjects" id="subjects" role="radiogroup" aria-label="选择科目">
+            <button type="button" class="chip" data-subject="chinese">语文</button>
+            <button type="button" class="chip" data-subject="math">数学</button>
+            <button type="button" class="chip" data-subject="english">英语</button>
+            <button type="button" class="chip" data-subject="other">其他</button>
+          </div>
+          <div class="composer-row">
+            <label class="sr-only" for="task-input">新的学习任务</label>
+            <input
+              id="task-input"
+              type="text"
+              maxlength="100"
+              placeholder="例如：背诵《静夜思》"
+              enterkeyhint="done"
+            >
+            <button type="submit" id="add-button">添加</button>
+          </div>
         </form>
         <p id="form-hint" class="form-hint" role="status" hidden></p>
+        <div class="filters" id="filters" role="tablist" aria-label="筛选任务">
+          <button type="button" class="filter is-on" data-filter="all" role="tab" aria-selected="true">全部</button>
+          <button type="button" class="filter" data-filter="open" role="tab" aria-selected="false">未完成</button>
+          <button type="button" class="filter" data-filter="done" role="tab" aria-selected="false">已完成</button>
+        </div>
 
         <p class="empty" id="empty" hidden>还没有学习任务。在上面写下今天想完成的第一件事吧。</p>
         <ul class="tasks" id="task-list"></ul>

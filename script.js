@@ -2,14 +2,20 @@
 // Tasks live in localStorage so a refresh keeps the same list.
 
 const STORAGE_KEY = "ai-student-workspace-tasks";
+const SUBJECT_KEY = "ai-student-workspace-subject";
 const MAX_LENGTH = 100;
 
-const ACCENTS = ["accent-sun", "accent-sky", "accent-peach", "accent-leaf"];
+const SUBJECTS = {
+  chinese: { label: "语文", accent: "accent-sun" },
+  math: { label: "数学", accent: "accent-sky" },
+  english: { label: "英语", accent: "accent-peach" },
+  other: { label: "其他", accent: "accent-leaf" },
+};
 
 const SEED_TASKS = [
-  { id: "seed-english", text: "复习英语单元单词并默写", completed: false },
-  { id: "seed-math", text: "完成数学作业本第 12 页", completed: false },
-  { id: "seed-chinese", text: "预习明天的语文课文", completed: false },
+  { id: "seed-english", text: "复习英语单元单词并默写", completed: false, subject: "english" },
+  { id: "seed-math", text: "完成数学作业本第 12 页", completed: false, subject: "math" },
+  { id: "seed-chinese", text: "预习明天的语文课文", completed: false, subject: "chinese" },
 ];
 
 const taskForm = document.getElementById("task-form");
@@ -24,12 +30,17 @@ const progressCount = document.getElementById("progress-count");
 const progressHint = document.getElementById("progress-hint");
 const cheer = document.getElementById("cheer");
 const formHint = document.getElementById("form-hint");
+const subjectGroup = document.getElementById("subjects");
+const filterGroup = document.getElementById("filters");
 const toast = document.getElementById("toast");
 const toastText = document.getElementById("toast-text");
 const toastUndo = document.getElementById("toast-undo");
 
 let tasks = loadTasks();
 let editingId = null;
+let editSubject = "other";
+let draftSubject = loadDraftSubject();
+let listFilter = "all";
 let undoStack = [];
 let undoTimer = 0;
 let hintTimer = 0;
@@ -43,6 +54,35 @@ today.textContent = new Date().toLocaleDateString("zh-CN", {
 
 renderList(null);
 updateProgress();
+markSubjectChips(subjectGroup, draftSubject);
+
+subjectGroup.addEventListener("click", (event) => {
+  const chip = event.target.closest("[data-subject]");
+  if (!chip) {
+    return;
+  }
+  draftSubject = normalizeSubject(chip.dataset.subject);
+  markSubjectChips(subjectGroup, draftSubject);
+  try {
+    localStorage.setItem(SUBJECT_KEY, draftSubject);
+  } catch (error) {
+    // Remembering the last subject is optional.
+  }
+});
+
+filterGroup.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-filter]");
+  if (!button) {
+    return;
+  }
+  listFilter = button.dataset.filter;
+  filterGroup.querySelectorAll(".filter").forEach((item) => {
+    const on = item === button;
+    item.classList.toggle("is-on", on);
+    item.setAttribute("aria-selected", on ? "true" : "false");
+  });
+  renderList(null);
+});
 
 // Enter adds a task. The Enter that only confirms an IME candidate must not.
 taskInput.addEventListener("keydown", (event) => {
@@ -88,6 +128,29 @@ function greetingForHour(hour) {
   return "晚上好，同学";
 }
 
+function normalizeSubject(value) {
+  return Object.prototype.hasOwnProperty.call(SUBJECTS, value) ? value : "other";
+}
+
+function loadDraftSubject() {
+  try {
+    return normalizeSubject(localStorage.getItem(SUBJECT_KEY));
+  } catch (error) {
+    return "other";
+  }
+}
+
+function markSubjectChips(container, subject) {
+  if (!container) {
+    return;
+  }
+  container.querySelectorAll("[data-subject]").forEach((chip) => {
+    const on = chip.dataset.subject === subject;
+    chip.classList.toggle("is-on", on);
+    chip.setAttribute("aria-pressed", on ? "true" : "false");
+  });
+}
+
 function loadTasks() {
   let raw;
   try {
@@ -114,6 +177,7 @@ function loadTasks() {
         id: item.id,
         text: item.text.trim().slice(0, MAX_LENGTH),
         completed: Boolean(item.completed),
+        subject: normalizeSubject(item.subject),
       }))
       .filter((item) => item.text.length > 0);
   } catch (error) {
@@ -156,6 +220,7 @@ function addTask(rawText) {
     id: createId(),
     text: text,
     completed: false,
+    subject: draftSubject,
   };
   tasks.push(task);
   if (!persist(tasks)) {
@@ -232,7 +297,9 @@ function undoDelete() {
 }
 
 function startEdit(id) {
+  const task = tasks.find((item) => item.id === id);
   editingId = id;
+  editSubject = task ? task.subject : "other";
   renderList(null);
   const field = taskList.querySelector(".task-edit");
   if (field) {
@@ -267,9 +334,12 @@ function saveEdit(id, rawText) {
     return;
   }
   const previous = task.text;
+  const previousSubject = task.subject;
   task.text = text;
+  task.subject = editSubject;
   if (!persist(tasks)) {
     task.text = previous;
+    task.subject = previousSubject;
     showFormHint("这次没能保存修改。");
     return;
   }
@@ -281,15 +351,47 @@ function saveEdit(id, rawText) {
   }
 }
 
+function orderedTasks() {
+  return tasks
+    .map((task, index) => ({ task: task, index: index }))
+    .sort((a, b) => {
+      if (a.task.completed !== b.task.completed) {
+        return a.task.completed ? 1 : -1;
+      }
+      return a.index - b.index;
+    })
+    .map((item) => item.task);
+}
+
+function visibleTasks() {
+  const ordered = orderedTasks();
+  if (listFilter === "open") {
+    return ordered.filter((task) => !task.completed);
+  }
+  if (listFilter === "done") {
+    return ordered.filter((task) => task.completed);
+  }
+  return ordered;
+}
+
 function renderList(enteringId) {
   taskList.replaceChildren();
-  const isEmpty = tasks.length === 0;
+  const visible = visibleTasks();
+  const isEmpty = visible.length === 0;
   emptyState.hidden = !isEmpty;
   taskList.hidden = isEmpty;
+  if (tasks.length === 0) {
+    emptyState.textContent = "还没有学习任务。在上面写下今天想完成的第一件事吧。";
+  } else if (listFilter === "open") {
+    emptyState.textContent = "未完成的都勾完了。可以切到「全部」再看一眼。";
+  } else if (listFilter === "done") {
+    emptyState.textContent = "还没有完成的任务。做完一项，再来这里看。";
+  }
 
-  tasks.forEach((task, index) => {
+  visible.forEach((task) => {
+    const subject = SUBJECTS[task.subject];
     const item = document.createElement("li");
-    item.className = "task " + ACCENTS[index % ACCENTS.length];
+    item.className = "task " + subject.accent;
     item.dataset.id = task.id;
     if (task.completed) {
       item.classList.add("is-done");
@@ -330,16 +432,37 @@ function renderList(enteringId) {
       const error = document.createElement("p");
       error.className = "edit-error";
       error.hidden = true;
-      main.append(field, error);
+      const subjectPicker = document.createElement("div");
+      subjectPicker.className = "subjects";
+      Object.keys(SUBJECTS).forEach((key) => {
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "chip tiny";
+        chip.dataset.subject = key;
+        chip.textContent = SUBJECTS[key].label;
+        chip.addEventListener("click", () => {
+          editSubject = key;
+          markSubjectChips(subjectPicker, editSubject);
+        });
+        subjectPicker.append(chip);
+      });
+      markSubjectChips(subjectPicker, editSubject);
+      main.append(field, subjectPicker, error);
     } else {
       const text = document.createElement("label");
       text.className = "task-text";
       text.htmlFor = checkbox.id;
       text.textContent = task.text;
+      const tags = document.createElement("div");
+      tags.className = "tags";
+      const subjectTag = document.createElement("span");
+      subjectTag.className = "subject-tag " + subject.accent;
+      subjectTag.textContent = subject.label;
       const tag = document.createElement("span");
       tag.className = "done-tag";
       tag.textContent = "已完成";
-      main.append(text, tag);
+      tags.append(subjectTag, tag);
+      main.append(text, tags);
     }
 
     const actions = document.createElement("div");
@@ -392,6 +515,7 @@ function renderList(enteringId) {
         showFormHint("这次没能保存完成状态。");
         return;
       }
+      renderList(null);
       updateProgress();
     });
 
@@ -428,6 +552,11 @@ function updateProgress() {
       progressHint.textContent = "";
     }
   }
+
+  const openCount = total - done;
+  filterGroup.querySelector('[data-filter="all"]').textContent = "全部 " + total;
+  filterGroup.querySelector('[data-filter="open"]').textContent = "未完成 " + openCount;
+  filterGroup.querySelector('[data-filter="done"]').textContent = "已完成 " + done;
 
   const wasHidden = cheer.hidden;
   cheer.hidden = !allDone;
