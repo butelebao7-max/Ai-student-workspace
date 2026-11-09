@@ -421,6 +421,10 @@ input {
   background: linear-gradient(90deg, var(--green-50) 0%, #ffffff 55%);
 }
 
+.task.is-focus {
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.7);
+}
+
 @media (hover: hover) {
   .task:hover {
     transform: translateY(-1px);
@@ -586,6 +590,81 @@ input {
   color: #fff;
 }
 
+.mini.focus {
+  background: var(--sky-soft);
+  border-color: #bae6fd;
+  color: #0369a1;
+}
+
+.mini:disabled {
+  opacity: 0.72;
+  cursor: default;
+}
+
+.focus-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 12px;
+  padding: 12px 14px;
+  border-radius: 18px;
+  background: linear-gradient(100deg, #ecfdf5, #e0f6fe 70%);
+  border: 1px solid #c7ebf8;
+}
+
+.focus-card.is-finished {
+  background: linear-gradient(100deg, var(--sun-soft), var(--peach-soft));
+  border-color: #f6d7a8;
+}
+
+.focus-copy {
+  flex: 1 1 150px;
+  min-width: 0;
+}
+
+.focus-kicker,
+.focus-task,
+.focus-clock {
+  margin: 0;
+}
+
+.focus-kicker {
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: #0369a1;
+}
+
+.focus-card.is-finished .focus-kicker {
+  color: #9a3412;
+}
+
+.focus-task {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 800;
+}
+
+.focus-clock {
+  flex: none;
+  font-size: 1.7rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  color: var(--green-800);
+}
+
+.focus-card.is-running .focus-clock {
+  animation: glow 1.8s ease-in-out infinite;
+}
+
+.focus-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-left: auto;
+}
+
 .toast {
   position: fixed;
   z-index: 5;
@@ -682,6 +761,10 @@ input {
   0% { transform: scale(0.82); }
   55% { transform: scale(1.08); }
   100% { transform: scale(1); }
+}
+
+@keyframes glow {
+  50% { color: #0ea5e9; }
 }
 
 @media (max-width: 520px) {

@@ -74,11 +74,24 @@
           </div>
         </form>
         <p id="form-hint" class="form-hint" role="status" hidden></p>
-        <div class="filters" id="filters" role="tablist" aria-label="筛选任务">
-          <button type="button" class="filter is-on" data-filter="all" role="tab" aria-selected="true">全部</button>
-          <button type="button" class="filter" data-filter="open" role="tab" aria-selected="false">未完成</button>
-          <button type="button" class="filter" data-filter="done" role="tab" aria-selected="false">已完成</button>
+        <div class="filters" id="filters" role="group" aria-label="筛选任务">
+          <button type="button" class="filter is-on" data-filter="all" aria-pressed="true">全部</button>
+          <button type="button" class="filter" data-filter="open" aria-pressed="false">未完成</button>
+          <button type="button" class="filter" data-filter="done" aria-pressed="false">已完成</button>
         </div>
+        <section id="focus" class="focus-card" hidden>
+          <div class="focus-copy">
+            <p class="focus-kicker" id="focus-kicker">正在专注</p>
+            <p class="focus-task" id="focus-task"></p>
+          </div>
+          <p class="focus-clock" id="focus-clock" aria-hidden="true">25:00</p>
+          <div class="focus-actions">
+            <button type="button" id="focus-pause" class="mini">暂停</button>
+            <button type="button" id="focus-stop" class="mini danger">结束</button>
+            <button type="button" id="focus-done" class="mini primary" hidden>勾上这项</button>
+          </div>
+          <p id="focus-live" class="sr-only" role="status"></p>
+        </section>
 
         <p class="empty" id="empty" hidden>还没有学习任务。在上面写下今天想完成的第一件事吧。</p>
         <ul class="tasks" id="task-list"></ul>

@@ -3,7 +3,10 @@
 
 const STORAGE_KEY = "ai-student-workspace-tasks";
 const SUBJECT_KEY = "ai-student-workspace-subject";
+const TIMER_KEY = "ai-student-workspace-timer";
 const MAX_LENGTH = 100;
+const FOCUS_MS = 25 * 60 * 1000;
+const BASE_TITLE = "AI 学生工作台";
 
 const SUBJECTS = {
   chinese: { label: "语文", accent: "accent-sun" },
@@ -35,6 +38,14 @@ const filterGroup = document.getElementById("filters");
 const toast = document.getElementById("toast");
 const toastText = document.getElementById("toast-text");
 const toastUndo = document.getElementById("toast-undo");
+const focusCard = document.getElementById("focus");
+const focusKicker = document.getElementById("focus-kicker");
+const focusTask = document.getElementById("focus-task");
+const focusClock = document.getElementById("focus-clock");
+const focusPause = document.getElementById("focus-pause");
+const focusStop = document.getElementById("focus-stop");
+const focusDone = document.getElementById("focus-done");
+const focusLive = document.getElementById("focus-live");
 
 let tasks = loadTasks();
 let editingId = null;
@@ -44,6 +55,9 @@ let listFilter = "all";
 let undoStack = [];
 let undoTimer = 0;
 let hintTimer = 0;
+let focus = null;
+let tickHandle = 0;
+let shownClock = "";
 
 greeting.textContent = greetingForHour(new Date().getHours());
 today.textContent = new Date().toLocaleDateString("zh-CN", {
@@ -52,9 +66,24 @@ today.textContent = new Date().toLocaleDateString("zh-CN", {
   weekday: "long",
 });
 
+focus = loadFocus();
 renderList(null);
 updateProgress();
+updateTimer();
 markSubjectChips(subjectGroup, draftSubject);
+
+focusPause.addEventListener("click", () => {
+  if (!focus) {
+    return;
+  }
+  if (focus.state === "running") {
+    pauseFocus();
+  } else if (focus.state === "paused") {
+    resumeFocus();
+  }
+});
+focusStop.addEventListener("click", () => stopFocus());
+focusDone.addEventListener("click", completeFocusedTask);
 
 subjectGroup.addEventListener("click", (event) => {
   const chip = event.target.closest("[data-subject]");
@@ -79,7 +108,7 @@ filterGroup.addEventListener("click", (event) => {
   filterGroup.querySelectorAll(".filter").forEach((item) => {
     const on = item === button;
     item.classList.toggle("is-on", on);
-    item.setAttribute("aria-selected", on ? "true" : "false");
+    item.setAttribute("aria-pressed", on ? "true" : "false");
   });
   renderList(null);
 });
@@ -250,6 +279,11 @@ function deleteTask(id) {
     return;
   }
   undoStack.push({ task: removed, index: index });
+  if (focus && focus.taskId === id) {
+    focus = null;
+    saveFocus();
+    updateTimer();
+  }
   renderList(null);
   updateProgress();
   showUndo();
@@ -396,6 +430,9 @@ function renderList(enteringId) {
     if (task.completed) {
       item.classList.add("is-done");
     }
+    if (focus && focus.taskId === task.id && focus.state !== "finished") {
+      item.classList.add("is-focus");
+    }
     if (task.id === enteringId) {
       item.classList.add("is-entering");
     }
@@ -484,6 +521,26 @@ function renderList(enteringId) {
       cancel.addEventListener("click", cancelEdit);
       actions.append(save, cancel);
     } else {
+      if (!task.completed) {
+        const focusBtn = document.createElement("button");
+        focusBtn.type = "button";
+        focusBtn.className = "mini focus";
+        const mine = focus && focus.taskId === task.id && focus.state !== "finished";
+        if (mine && focus.state === "running") {
+          focusBtn.textContent = "专注中";
+          focusBtn.disabled = true;
+          focusBtn.setAttribute("aria-label", "正在专注：" + task.text);
+        } else if (mine && focus.state === "paused") {
+          focusBtn.textContent = "继续";
+          focusBtn.setAttribute("aria-label", "继续专注：" + task.text);
+          focusBtn.addEventListener("click", resumeFocus);
+        } else {
+          focusBtn.textContent = "专注";
+          focusBtn.setAttribute("aria-label", "开始 25 分钟专注：" + task.text);
+          focusBtn.addEventListener("click", () => startFocus(task.id));
+        }
+        actions.append(focusBtn);
+      }
       const edit = document.createElement("button");
       edit.type = "button";
       edit.className = "mini";
@@ -515,6 +572,11 @@ function renderList(enteringId) {
         showFormHint("这次没能保存完成状态。");
         return;
       }
+      if (task.completed && focus && focus.taskId === task.id) {
+        focus = null;
+        saveFocus();
+        updateTimer();
+      }
       renderList(null);
       updateProgress();
     });
@@ -523,6 +585,211 @@ function renderList(enteringId) {
     item.append(row);
     taskList.append(item);
   });
+}
+
+function formatClock(ms) {
+  const total = Math.max(0, Math.ceil(ms / 1000));
+  const minutes = Math.floor(total / 60);
+  const seconds = total % 60;
+  return String(minutes).padStart(2, "0") + ":" + String(seconds).padStart(2, "0");
+}
+
+function loadFocus() {
+  let raw;
+  try {
+    raw = localStorage.getItem(TIMER_KEY);
+  } catch (error) {
+    return null;
+  }
+  if (!raw) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed.taskId !== "string" || !tasks.some((task) => task.id === parsed.taskId)) {
+      return null;
+    }
+    if (parsed.state !== "running" && parsed.state !== "paused" && parsed.state !== "finished") {
+      return null;
+    }
+    const item = {
+      taskId: parsed.taskId,
+      state: parsed.state,
+      deadline: typeof parsed.deadline === "number" ? parsed.deadline : null,
+      remaining: typeof parsed.remaining === "number" ? parsed.remaining : FOCUS_MS,
+    };
+    if (item.state === "running" && (!item.deadline || item.deadline <= Date.now())) {
+      item.state = "finished";
+      item.deadline = null;
+      item.remaining = 0;
+    }
+    return item;
+  } catch (error) {
+    return null;
+  }
+}
+
+function saveFocus() {
+  try {
+    if (!focus) {
+      localStorage.removeItem(TIMER_KEY);
+    } else {
+      localStorage.setItem(TIMER_KEY, JSON.stringify(focus));
+    }
+  } catch (error) {
+    // The timer still runs for this visit if storage is blocked.
+  }
+}
+
+function announceFocus(message) {
+  focusLive.textContent = "";
+  focusLive.textContent = message;
+}
+
+function ensureTick() {
+  const shouldRun = focus && focus.state === "running";
+  if (shouldRun && !tickHandle) {
+    tickHandle = setInterval(tickFocus, 250);
+  } else if (!shouldRun && tickHandle) {
+    clearInterval(tickHandle);
+    tickHandle = 0;
+  }
+}
+
+function tickFocus() {
+  if (!focus || focus.state !== "running") {
+    return;
+  }
+  const left = focus.deadline - Date.now();
+  if (left <= 0) {
+    focus.state = "finished";
+    focus.deadline = null;
+    focus.remaining = 0;
+    saveFocus();
+    updateTimer();
+    renderList(null);
+    announceFocus("25 分钟专注结束了");
+    return;
+  }
+  const label = formatClock(left);
+  if (label !== shownClock) {
+    shownClock = label;
+    focusClock.textContent = label;
+    document.title = label + " · " + BASE_TITLE;
+  }
+}
+
+function updateTimer() {
+  ensureTick();
+  if (!focus) {
+    focusCard.hidden = true;
+    focusCard.classList.remove("is-running", "is-finished");
+    document.title = BASE_TITLE;
+    shownClock = "";
+    return;
+  }
+  const task = tasks.find((item) => item.id === focus.taskId);
+  if (!task) {
+    focus = null;
+    saveFocus();
+    updateTimer();
+    return;
+  }
+  focusCard.hidden = false;
+  focusTask.textContent = task.text;
+  const finished = focus.state === "finished";
+  focusCard.classList.toggle("is-finished", finished);
+  focusCard.classList.toggle("is-running", focus.state === "running");
+  if (finished) {
+    focusKicker.textContent = "这段专注结束了";
+  } else if (focus.state === "paused") {
+    focusKicker.textContent = "专注已暂停";
+  } else {
+    focusKicker.textContent = "正在专注";
+  }
+  focusPause.hidden = finished;
+  focusPause.textContent = focus.state === "paused" ? "继续" : "暂停";
+  focusStop.hidden = finished;
+  focusDone.hidden = !finished;
+  const ms = focus.state === "running" ? Math.max(0, focus.deadline - Date.now()) : focus.remaining;
+  const label = finished ? "00:00" : formatClock(ms);
+  focusClock.textContent = label;
+  shownClock = label;
+  if (focus.state === "running") {
+    document.title = label + " · " + BASE_TITLE;
+  } else if (finished) {
+    document.title = "专注结束 · " + BASE_TITLE;
+  } else {
+    document.title = "已暂停 · " + BASE_TITLE;
+  }
+}
+
+function startFocus(taskId) {
+  const replacing = Boolean(focus && focus.taskId !== taskId && focus.state !== "finished");
+  focus = {
+    taskId: taskId,
+    state: "running",
+    deadline: Date.now() + FOCUS_MS,
+    remaining: FOCUS_MS,
+  };
+  saveFocus();
+  renderList(null);
+  updateTimer();
+  announceFocus(replacing ? "已换成这项，重新开始 25 分钟" : "开始 25 分钟专注");
+}
+
+function pauseFocus() {
+  if (!focus || focus.state !== "running") {
+    return;
+  }
+  focus.remaining = Math.max(0, focus.deadline - Date.now());
+  focus.deadline = null;
+  focus.state = "paused";
+  saveFocus();
+  renderList(null);
+  updateTimer();
+  announceFocus("专注已暂停");
+}
+
+function resumeFocus() {
+  if (!focus || focus.state !== "paused") {
+    return;
+  }
+  focus.deadline = Date.now() + focus.remaining;
+  focus.state = "running";
+  saveFocus();
+  renderList(null);
+  updateTimer();
+  announceFocus("继续专注");
+}
+
+function stopFocus() {
+  focus = null;
+  saveFocus();
+  renderList(null);
+  updateTimer();
+  announceFocus("已结束专注");
+}
+
+function completeFocusedTask() {
+  if (!focus) {
+    return;
+  }
+  const task = tasks.find((item) => item.id === focus.taskId);
+  if (task && !task.completed) {
+    task.completed = true;
+    if (!persist(tasks)) {
+      task.completed = false;
+      showFormHint("这次没能保存完成状态。");
+      return;
+    }
+  }
+  focus = null;
+  saveFocus();
+  renderList(null);
+  updateProgress();
+  updateTimer();
+  announceFocus("已勾上这项任务");
 }
 
 function updateProgress() {
