@@ -36,7 +36,7 @@
         <div class="hero-grid">
           <div class="intro">
             <h1 id="greeting">你好，同学</h1>
-            <p class="lede">把今天要学的事写下来，做完就打个勾。<br>慢慢来，也会变成进步。</p>
+            <p class="lede">写下今天要学的事，做完打个勾。<br>慢慢来，也会变成进步。</p>
           </div>
 
           <section class="progress-card" aria-live="polite">
@@ -59,17 +59,24 @@
           <input
             id="task-input"
             type="text"
-            placeholder="例如：背诵《静夜思》并抄写一遍"
+            maxlength="100"
+            placeholder="例如：背诵《静夜思》"
             enterkeyhint="done"
           >
           <button type="submit" id="add-button">添加</button>
         </form>
+        <p id="form-hint" class="form-hint" role="status" hidden></p>
 
         <p class="empty" id="empty" hidden>还没有学习任务。在上面写下今天想完成的第一件事吧。</p>
         <ul class="tasks" id="task-list"></ul>
-        <p class="footnote">任务保存在这台浏览器里，刷新后还在。</p>
+        <p class="footnote">任务存在本机浏览器里，删错了可以撤销。</p>
       </section>
     </main>
+
+    <div id="toast" class="toast" role="status" hidden>
+      <span id="toast-text">已删除这项任务</span>
+      <button type="button" id="toast-undo">撤销</button>
+    </div>
 
     <script src="script.js"></script>
   </body>

@@ -2,14 +2,15 @@
 // Tasks live in localStorage so a refresh keeps the same list.
 
 const STORAGE_KEY = "ai-student-workspace-tasks";
+const MAX_LENGTH = 100;
+
+const ACCENTS = ["accent-sun", "accent-sky", "accent-peach", "accent-leaf"];
 
 const SEED_TASKS = [
   { id: "seed-english", text: "复习英语单元单词并默写", completed: false },
   { id: "seed-math", text: "完成数学作业本第 12 页", completed: false },
   { id: "seed-chinese", text: "预习明天的语文课文", completed: false },
 ];
-
-const ACCENTS = ["accent-sun", "accent-sky", "accent-peach", "accent-leaf"];
 
 const taskForm = document.getElementById("task-form");
 const taskInput = document.getElementById("task-input");
@@ -22,8 +23,16 @@ const percentLabel = document.getElementById("percent-label");
 const progressCount = document.getElementById("progress-count");
 const progressHint = document.getElementById("progress-hint");
 const cheer = document.getElementById("cheer");
+const formHint = document.getElementById("form-hint");
+const toast = document.getElementById("toast");
+const toastText = document.getElementById("toast-text");
+const toastUndo = document.getElementById("toast-undo");
 
 let tasks = loadTasks();
+let editingId = null;
+let undoStack = [];
+let undoTimer = 0;
+let hintTimer = 0;
 
 greeting.textContent = greetingForHour(new Date().getHours());
 today.textContent = new Date().toLocaleDateString("zh-CN", {
@@ -47,6 +56,12 @@ taskInput.addEventListener("keydown", (event) => {
   addTask(taskInput.value);
 });
 
+taskInput.addEventListener("input", () => {
+  if (taskInput.value.trim()) {
+    formHint.hidden = true;
+  }
+});
+
 taskForm.addEventListener("submit", (event) => {
   event.preventDefault();
   // The Add button submits the form. Enter is handled on keydown so it is not added twice.
@@ -54,6 +69,8 @@ taskForm.addEventListener("submit", (event) => {
     addTask(taskInput.value);
   }
 });
+
+toastUndo.addEventListener("click", undoDelete);
 
 function greetingForHour(hour) {
   if (hour < 5 || hour >= 22) {
@@ -76,7 +93,6 @@ function loadTasks() {
   try {
     raw = localStorage.getItem(STORAGE_KEY);
   } catch (error) {
-    // If storage cannot be read, show the samples without writing over anything.
     return SEED_TASKS.map((task) => ({ ...task }));
   }
 
@@ -96,7 +112,7 @@ function loadTasks() {
       .filter((item) => item && typeof item.id === "string" && typeof item.text === "string")
       .map((item) => ({
         id: item.id,
-        text: item.text.trim(),
+        text: item.text.trim().slice(0, MAX_LENGTH),
         completed: Boolean(item.completed),
       }))
       .filter((item) => item.text.length > 0);
@@ -109,8 +125,9 @@ function loadTasks() {
 function persist(nextTasks) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(nextTasks));
+    return true;
   } catch (error) {
-    // Private mode can block storage. The list still works until the page closes.
+    return false;
   }
 }
 
@@ -118,10 +135,20 @@ function createId() {
   return "task-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
 }
 
+function showFormHint(message) {
+  formHint.textContent = message;
+  formHint.hidden = false;
+  clearTimeout(hintTimer);
+  hintTimer = setTimeout(() => {
+    formHint.hidden = true;
+  }, 2800);
+}
+
 function addTask(rawText) {
-  const text = rawText.trim();
-  // Blank and whitespace-only input is ignored, and the field is left as-is.
+  const text = rawText.trim().slice(0, MAX_LENGTH);
   if (!text) {
+    showFormHint("先写上任务内容，再点添加。");
+    taskInput.focus();
     return;
   }
 
@@ -131,11 +158,127 @@ function addTask(rawText) {
     completed: false,
   };
   tasks.push(task);
-  persist(tasks);
+  if (!persist(tasks)) {
+    tasks.pop();
+    showFormHint("这次没能保存，请检查浏览器是否允许本地存储。");
+    return;
+  }
   taskInput.value = "";
+  formHint.hidden = true;
   renderList(task.id);
   updateProgress();
   taskInput.focus();
+}
+
+function deleteTask(id) {
+  const index = tasks.findIndex((task) => task.id === id);
+  if (index < 0) {
+    return;
+  }
+  const [removed] = tasks.splice(index, 1);
+  if (editingId === id) {
+    editingId = null;
+  }
+  if (!persist(tasks)) {
+    tasks.splice(index, 0, removed);
+    showFormHint("这次没能保存，任务还在。");
+    return;
+  }
+  undoStack.push({ task: removed, index: index });
+  renderList(null);
+  updateProgress();
+  showUndo();
+}
+
+function showUndo() {
+  const latest = undoStack[undoStack.length - 1];
+  const preview = latest.task.text.length > 16 ? latest.task.text.slice(0, 16) + "…" : latest.task.text;
+  toastText.textContent = undoStack.length > 1
+    ? "已删除「" + preview + "」，还可撤销 " + undoStack.length + " 项"
+    : "已删除「" + preview + "」";
+  toast.hidden = false;
+  clearTimeout(undoTimer);
+  undoTimer = setTimeout(forgetUndo, 6000);
+  toastUndo.focus();
+}
+
+function forgetUndo() {
+  undoStack = [];
+  toast.hidden = true;
+}
+
+function undoDelete() {
+  const last = undoStack.pop();
+  if (!last) {
+    toast.hidden = true;
+    return;
+  }
+  const index = Math.min(last.index, tasks.length);
+  tasks.splice(index, 0, last.task);
+  if (!persist(tasks)) {
+    tasks.splice(index, 1);
+    undoStack.push(last);
+    showFormHint("撤销没有保存成功。");
+    return;
+  }
+  renderList(null);
+  updateProgress();
+  if (undoStack.length === 0) {
+    clearTimeout(undoTimer);
+    toast.hidden = true;
+  } else {
+    showUndo();
+  }
+}
+
+function startEdit(id) {
+  editingId = id;
+  renderList(null);
+  const field = taskList.querySelector(".task-edit");
+  if (field) {
+    field.focus();
+    field.setSelectionRange(field.value.length, field.value.length);
+  }
+}
+
+function cancelEdit() {
+  editingId = null;
+  renderList(null);
+}
+
+function saveEdit(id, rawText) {
+  const task = tasks.find((item) => item.id === id);
+  if (!task) {
+    editingId = null;
+    renderList(null);
+    return;
+  }
+  const text = rawText.trim().slice(0, MAX_LENGTH);
+  const field = taskList.querySelector(".task-edit");
+  const error = taskList.querySelector(".edit-error");
+  if (!text) {
+    if (field) {
+      field.setAttribute("aria-invalid", "true");
+    }
+    if (error) {
+      error.hidden = false;
+      error.textContent = "写上内容才能保存。";
+    }
+    return;
+  }
+  const previous = task.text;
+  task.text = text;
+  if (!persist(tasks)) {
+    task.text = previous;
+    showFormHint("这次没能保存修改。");
+    return;
+  }
+  editingId = null;
+  renderList(null);
+  const row = taskList.querySelector('[data-id="' + id + '"] .mini');
+  if (row) {
+    row.focus();
+  }
 }
 
 function renderList(enteringId) {
@@ -147,6 +290,7 @@ function renderList(enteringId) {
   tasks.forEach((task, index) => {
     const item = document.createElement("li");
     item.className = "task " + ACCENTS[index % ACCENTS.length];
+    item.dataset.id = task.id;
     if (task.completed) {
       item.classList.add("is-done");
     }
@@ -154,41 +298,105 @@ function renderList(enteringId) {
       item.classList.add("is-entering");
     }
 
-    const label = document.createElement("label");
-    label.className = "task-label";
+    const row = document.createElement("div");
+    row.className = "task-row";
 
     const checkbox = document.createElement("input");
     checkbox.type = "checkbox";
+    checkbox.className = "task-check";
+    checkbox.id = "check-" + task.id;
     checkbox.checked = task.completed;
+    checkbox.setAttribute("aria-label", (task.completed ? "标为未完成：" : "标为已完成：") + task.text);
 
-    const text = document.createElement("span");
-    text.className = "task-text";
-    // Task text is never written with innerHTML.
-    text.textContent = task.text;
+    const main = document.createElement("div");
+    main.className = "task-main";
 
-    const tagBreak = document.createElement("span");
-    tagBreak.className = "tag-break";
-    tagBreak.setAttribute("aria-hidden", "true");
+    if (editingId === task.id) {
+      const field = document.createElement("input");
+      field.type = "text";
+      field.className = "task-edit";
+      field.value = task.text;
+      field.maxLength = MAX_LENGTH;
+      field.setAttribute("aria-label", "编辑任务");
+      field.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          cancelEdit();
+        } else if (event.key === "Enter" && !event.isComposing && event.keyCode !== 229) {
+          event.preventDefault();
+          saveEdit(task.id, field.value);
+        }
+      });
+      const error = document.createElement("p");
+      error.className = "edit-error";
+      error.hidden = true;
+      main.append(field, error);
+    } else {
+      const text = document.createElement("label");
+      text.className = "task-text";
+      text.htmlFor = checkbox.id;
+      text.textContent = task.text;
+      const tag = document.createElement("span");
+      tag.className = "done-tag";
+      tag.textContent = "已完成";
+      main.append(text, tag);
+    }
 
-    const tag = document.createElement("span");
-    tag.className = "done-tag";
-    tag.textContent = "已完成";
+    const actions = document.createElement("div");
+    actions.className = "task-actions";
+
+    if (editingId === task.id) {
+      const save = document.createElement("button");
+      save.type = "button";
+      save.className = "mini primary";
+      save.textContent = "保存";
+      save.addEventListener("click", () => {
+        const field = item.querySelector(".task-edit");
+        saveEdit(task.id, field ? field.value : "");
+      });
+      const cancel = document.createElement("button");
+      cancel.type = "button";
+      cancel.className = "mini";
+      cancel.textContent = "取消";
+      cancel.addEventListener("click", cancelEdit);
+      actions.append(save, cancel);
+    } else {
+      const edit = document.createElement("button");
+      edit.type = "button";
+      edit.className = "mini";
+      edit.textContent = "编辑";
+      edit.setAttribute("aria-label", "编辑任务：" + task.text);
+      edit.addEventListener("click", () => startEdit(task.id));
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "mini danger";
+      remove.textContent = "删除";
+      remove.setAttribute("aria-label", "删除任务：" + task.text);
+      remove.addEventListener("click", () => deleteTask(task.id));
+      actions.append(edit, remove);
+    }
 
     checkbox.addEventListener("change", () => {
       task.completed = checkbox.checked;
+      checkbox.setAttribute("aria-label", (task.completed ? "标为未完成：" : "标为已完成：") + task.text);
       item.classList.toggle("is-done", task.completed);
       if (checkbox.checked) {
         checkbox.classList.remove("just-checked");
-        // Restart the small pop animation on each check.
         void checkbox.offsetWidth;
         checkbox.classList.add("just-checked");
       }
-      persist(tasks);
+      if (!persist(tasks)) {
+        task.completed = !task.completed;
+        checkbox.checked = task.completed;
+        item.classList.toggle("is-done", task.completed);
+        showFormHint("这次没能保存完成状态。");
+        return;
+      }
       updateProgress();
     });
 
-    label.append(checkbox, text, tagBreak, tag);
-    item.append(label);
+    row.append(checkbox, main, actions);
+    item.append(row);
     taskList.append(item);
   });
 }
