@@ -596,9 +596,48 @@ input {
   color: #0369a1;
 }
 
+.mini.pin.is-on {
+  background: #f6c453;
+  border-color: transparent;
+  color: #6b4a08;
+}
+
+.pin-tag {
+  background: #fff3c4;
+  color: #8a5a00;
+  width: fit-content;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
 .mini:disabled {
   opacity: 0.72;
   cursor: default;
+}
+
+.list-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.clear-done {
+  min-height: 40px;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: #c2410c;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.clear-done:focus-visible {
+  outline: 3px solid var(--sky);
+  outline-offset: 2px;
 }
 
 .focus-card {
@@ -610,6 +649,26 @@ input {
   border-radius: 18px;
   background: linear-gradient(100deg, #ecfdf5, #e0f6fe 70%);
   border: 1px solid #c7ebf8;
+}
+
+@media (min-width: 768px) {
+  .focus-card {
+    position: fixed;
+    z-index: 4;
+    left: 50%;
+    bottom: max(12px, env(safe-area-inset-bottom));
+    transform: translateX(-50%);
+    width: min(720px, calc(100% - 48px));
+    box-shadow: 0 16px 40px rgba(6, 78, 59, 0.18);
+  }
+
+  body.has-focus {
+    padding-bottom: calc(120px + env(safe-area-inset-bottom));
+  }
+
+  body.has-focus:has(#toast:not([hidden])) .focus-card {
+    bottom: calc(max(12px, env(safe-area-inset-bottom)) + 72px);
+  }
 }
 
 .focus-card.is-finished {

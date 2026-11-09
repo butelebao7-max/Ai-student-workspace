@@ -46,6 +46,7 @@ const focusPause = document.getElementById("focus-pause");
 const focusStop = document.getElementById("focus-stop");
 const focusDone = document.getElementById("focus-done");
 const focusLive = document.getElementById("focus-live");
+const clearDone = document.getElementById("clear-done");
 
 let tasks = loadTasks();
 let editingId = null;
@@ -84,6 +85,7 @@ focusPause.addEventListener("click", () => {
 });
 focusStop.addEventListener("click", () => stopFocus());
 focusDone.addEventListener("click", completeFocusedTask);
+clearDone.addEventListener("click", clearCompleted);
 
 subjectGroup.addEventListener("click", (event) => {
   const chip = event.target.closest("[data-subject]");
@@ -207,6 +209,7 @@ function loadTasks() {
         text: item.text.trim().slice(0, MAX_LENGTH),
         completed: Boolean(item.completed),
         subject: normalizeSubject(item.subject),
+        important: Boolean(item.important),
       }))
       .filter((item) => item.text.length > 0);
   } catch (error) {
@@ -250,6 +253,7 @@ function addTask(rawText) {
     text: text,
     completed: false,
     subject: draftSubject,
+    important: false,
   };
   tasks.push(task);
   if (!persist(tasks)) {
@@ -278,7 +282,11 @@ function deleteTask(id) {
     showFormHint("这次没能保存，任务还在。");
     return;
   }
-  undoStack.push({ task: removed, index: index });
+  const preview = removed.text.length > 16 ? removed.text.slice(0, 16) + "…" : removed.text;
+  undoStack.push({
+    items: [{ task: removed, index: index }],
+    message: "已删除「" + preview + "」",
+  });
   if (focus && focus.taskId === id) {
     focus = null;
     saveFocus();
@@ -291,10 +299,9 @@ function deleteTask(id) {
 
 function showUndo() {
   const latest = undoStack[undoStack.length - 1];
-  const preview = latest.task.text.length > 16 ? latest.task.text.slice(0, 16) + "…" : latest.task.text;
   toastText.textContent = undoStack.length > 1
-    ? "已删除「" + preview + "」，还可撤销 " + undoStack.length + " 项"
-    : "已删除「" + preview + "」";
+    ? latest.message + "，还可撤销 " + undoStack.length + " 次"
+    : latest.message;
   toast.hidden = false;
   clearTimeout(undoTimer);
   undoTimer = setTimeout(forgetUndo, 6000);
@@ -312,10 +319,15 @@ function undoDelete() {
     toast.hidden = true;
     return;
   }
-  const index = Math.min(last.index, tasks.length);
-  tasks.splice(index, 0, last.task);
+  const snapshot = tasks.slice();
+  last.items
+    .slice()
+    .sort((a, b) => a.index - b.index)
+    .forEach((entry) => {
+      tasks.splice(Math.min(entry.index, tasks.length), 0, entry.task);
+    });
   if (!persist(tasks)) {
-    tasks.splice(index, 1);
+    tasks.splice(0, tasks.length, ...snapshot);
     undoStack.push(last);
     showFormHint("撤销没有保存成功。");
     return;
@@ -385,12 +397,55 @@ function saveEdit(id, rawText) {
   }
 }
 
+function clearCompleted() {
+  const snapshot = tasks.slice();
+  const items = [];
+  tasks.forEach((task, index) => {
+    if (task.completed) {
+      items.push({ task: task, index: index });
+    }
+  });
+  if (items.length === 0) {
+    return;
+  }
+  tasks = tasks.filter((task) => !task.completed);
+  if (!persist(tasks)) {
+    tasks = snapshot;
+    showFormHint("这次没能清除已完成的任务。");
+    return;
+  }
+  undoStack.push({
+    items: items,
+    message: "已清除 " + items.length + " 项已完成任务",
+  });
+  renderList(null);
+  updateProgress();
+  showUndo();
+}
+
+function toggleImportant(id) {
+  const task = tasks.find((item) => item.id === id);
+  if (!task) {
+    return;
+  }
+  task.important = !task.important;
+  if (!persist(tasks)) {
+    task.important = !task.important;
+    showFormHint("这次没能保存重点标记。");
+    return;
+  }
+  renderList(null);
+}
+
 function orderedTasks() {
   return tasks
     .map((task, index) => ({ task: task, index: index }))
     .sort((a, b) => {
       if (a.task.completed !== b.task.completed) {
         return a.task.completed ? 1 : -1;
+      }
+      if (Boolean(a.task.important) !== Boolean(b.task.important)) {
+        return a.task.important ? -1 : 1;
       }
       return a.index - b.index;
     })
@@ -492,6 +547,12 @@ function renderList(enteringId) {
       text.textContent = task.text;
       const tags = document.createElement("div");
       tags.className = "tags";
+      if (task.important) {
+        const pinTag = document.createElement("span");
+        pinTag.className = "pin-tag";
+        pinTag.textContent = "重点";
+        tags.append(pinTag);
+      }
       const subjectTag = document.createElement("span");
       subjectTag.className = "subject-tag " + subject.accent;
       subjectTag.textContent = subject.label;
@@ -521,6 +582,14 @@ function renderList(enteringId) {
       cancel.addEventListener("click", cancelEdit);
       actions.append(save, cancel);
     } else {
+      const pin = document.createElement("button");
+      pin.type = "button";
+      pin.className = "mini pin" + (task.important ? " is-on" : "");
+      pin.textContent = "重点";
+      pin.setAttribute("aria-pressed", task.important ? "true" : "false");
+      pin.setAttribute("aria-label", (task.important ? "取消重点：" : "标为重点：") + task.text);
+      pin.addEventListener("click", () => toggleImportant(task.id));
+      actions.append(pin);
       if (!task.completed) {
         const focusBtn = document.createElement("button");
         focusBtn.type = "button";
@@ -681,6 +750,7 @@ function tickFocus() {
 
 function updateTimer() {
   ensureTick();
+  document.body.classList.toggle("has-focus", Boolean(focus));
   if (!focus) {
     focusCard.hidden = true;
     focusCard.classList.remove("is-running", "is-finished");
@@ -821,6 +891,7 @@ function updateProgress() {
   }
 
   const openCount = total - done;
+  clearDone.hidden = done === 0;
   filterGroup.querySelector('[data-filter="all"]').textContent = "全部 " + total;
   filterGroup.querySelector('[data-filter="open"]').textContent = "未完成 " + openCount;
   filterGroup.querySelector('[data-filter="done"]').textContent = "已完成 " + done;

@@ -74,10 +74,13 @@
           </div>
         </form>
         <p id="form-hint" class="form-hint" role="status" hidden></p>
-        <div class="filters" id="filters" role="group" aria-label="筛选任务">
-          <button type="button" class="filter is-on" data-filter="all" aria-pressed="true">全部</button>
-          <button type="button" class="filter" data-filter="open" aria-pressed="false">未完成</button>
-          <button type="button" class="filter" data-filter="done" aria-pressed="false">已完成</button>
+        <div class="list-tools">
+          <div class="filters" id="filters" role="group" aria-label="筛选任务">
+            <button type="button" class="filter is-on" data-filter="all" aria-pressed="true">全部</button>
+            <button type="button" class="filter" data-filter="open" aria-pressed="false">未完成</button>
+            <button type="button" class="filter" data-filter="done" aria-pressed="false">已完成</button>
+          </div>
+          <button type="button" id="clear-done" class="clear-done" hidden>清除已完成</button>
         </div>
         <section id="focus" class="focus-card" hidden>
           <div class="focus-copy">
