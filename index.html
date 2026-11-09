@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#e7f6ee">
+  <meta name="description" content="帮助学生安排每日学习任务的轻量工作台。">
+  <title>AI 学习工作台</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230e9f6e'/%3E%3Cpath d='M8 17.5l5 5 11-12' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <a class="skip" href="#task-input">跳到添加任务</a>
+
+  <div class="atmosphere" aria-hidden="true">
+    <span class="orb orb-sun"></span>
+    <span class="orb orb-sky"></span>
+    <span class="orb orb-peach"></span>
+    <span class="leaf leaf-a"></span>
+    <span class="leaf leaf-b"></span>
+  </div>
+
+  <main class="desk">
+    <header class="hero">
+      <div class="hero-copy">
+        <p class="brand"><span class="brand-dot" aria-hidden="true"></span>AI 学习工作台</p>
+        <h1 id="greeting">你好，同学</h1>
+        <p id="today" class="today"></p>
+        <p class="lede">把今天要学的事写下来，完成一项就勾一项。</p>
+      </div>
+      <div class="hero-art" aria-hidden="true">
+        <svg viewBox="0 0 220 240" xmlns="http://www.w3.org/2000/svg">
+          <rect x="16" y="10" width="146" height="156" rx="18" fill="#e7f7ff" stroke="#8fd0ee" stroke-width="4"/>
+          <path d="M89 10v156M16 84h146" stroke="#8fd0ee" stroke-width="4"/>
+          <circle cx="50" cy="46" r="15" fill="#f6c453"/>
+          <circle cx="50" cy="46" r="7" fill="#ffe7a3"/>
+          <path d="M16 118c28-22 46-6 70 2 22 8 40 6 60-12v52H16z" fill="#9be7c4"/>
+          <path d="M16 136c32-12 50 6 78 0 24-6 40 4 52-4v30H16z" fill="#2faf78"/>
+          <rect x="154" y="124" width="50" height="38" rx="8" fill="#ffb089"/>
+          <rect x="148" y="116" width="62" height="14" rx="7" fill="#ff8a6a"/>
+          <path d="M178 116c-2-30 12-52 12-52s24 20 14 52" fill="#1aa36a"/>
+          <path d="M176 114c-20-18-6-50-6-50s30 18 22 50" fill="#49d6a0"/>
+          <path d="M182 116c18-24 32-16 32-16s-6 30-18 42" fill="#0e9f6e"/>
+          <rect x="36" y="182" width="156" height="46" rx="10" fill="#fffdf9" stroke="#0e9f6e" stroke-width="3"/>
+          <path d="M54 198h74" stroke="#f0b429" stroke-width="5" stroke-linecap="round"/>
+          <path d="M54 212h48" stroke="#5ec8ef" stroke-width="5" stroke-linecap="round"/>
+          <path d="M168 182c10 2 16 14 8 22-8-2-16-8-20-16 4-4 8-6 12-6z" fill="#ff8a6a"/>
+        </svg>
+      </div>
+    </header>
+
+    <section class="board" aria-labelledby="board-title">
+      <div class="spine" aria-hidden="true"></div>
+      <div class="page">
+        <h2 id="board-title" class="sr-only">学习任务</h2>
+
+        <div class="progress" id="progress" aria-live="polite">
+          <div class="ring" id="ring" style="--p: 0">
+            <div class="ring-hole">
+              <strong id="percent">0%</strong>
+            </div>
+          </div>
+          <div class="progress-copy">
+            <p class="progress-kicker">今日进度</p>
+            <p class="progress-count" id="progress-count">已完成 0 / 0</p>
+            <p class="progress-note" id="progress-note">添加一项，开始今天的学习</p>
+            <div class="meter" aria-hidden="true"><span id="meter-bar"></span></div>
+          </div>
+        </div>
+
+        <form id="task-form" class="composer" autocomplete="off">
+          <label class="sr-only" for="task-input">新的学习任务</label>
+          <input id="task-input" name="task" type="text" maxlength="200" placeholder="添加一项学习任务…" enterkeyhint="done">
+          <button type="submit">添加</button>
+        </form>
+
+        <p id="empty" class="empty" hidden>还没有学习任务。写下一件小事，今天就从这里开始。</p>
+        <ul id="task-list" class="tasks"></ul>
+        <p id="cheer" class="cheer" role="status" hidden>全部完成啦。你今天很认真，给自己一点掌声。</p>
+        <p class="footnote">任务保存在这台浏览器里，刷新后还会在。</p>
+      </div>
+    </section>
+  </main>
+
+  <noscript>
+    <p class="noscript">请开启 JavaScript，任务清单才能使用。</p>
+  </noscript>
+  <script src="script.js"></script>
+</body>
+</html>
